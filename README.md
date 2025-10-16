@@ -17,11 +17,6 @@ Requirements / dependencies
 
 On your system you may have these available via modules (example shown in `run.sh`) or via pip/conda.
 
-How progress reporting works (summary)
-- The reader divides global blocks among MPI ranks.
-- For each timestep the per-rank pipeline performs four stages: (0) read tags/time, (1) geometry (coords/connectivity), (2) variable planes, and (3) publish/render.
-- Each rank reports stage completion to rank 0; rank 0 aggregates those reports and writes compact aggregated status to stdout so you can monitor job logs.
-
 Quick start (interactive test)
 1. Ensure dependencies are installed or loaded (e.g., via your cluster modules):
   - `mpi4py`, `numpy`, `rich` (optional), Conduit/Ascent (if publishing)
@@ -52,5 +47,14 @@ Behavioral notes
 - Endianness and precision are detected from the first file header and handled correctly when reading coordinates and variable planes.
 - The script uses memory-mapped reads (`np.memmap`) for large contiguous regions for performance.
 
-License & notes
-- No license file included; treat this as internal project code. Modify as needed for your workflow.
+Disable progress UI
+-------------------
+For scripted or batch runs you may want no interactive progress UI. The reader supports a `--no-progress` flag which disables the Rich progress bars and the rank-0 aggregated progress printing. The provided `run-aurora.sh` calls the reader with `--no-progress` by default so the job logs remain concise.
+
+Example:
+```bash
+python nek5000_ascent_reader.py /path/to/sim.nek5000 --no-progress
+```
+
+## License
+This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for details.

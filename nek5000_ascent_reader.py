@@ -25,9 +25,9 @@ try:
 except Exception:
     RICH_AVAILABLE = False
 
-def make_progress(rank: int):
+def make_progress(rank: int, enabled: bool = True):
     """Rank-0 real progress; no-op elsewhere or if rich isn't available."""
-    if rank != 0 or not RICH_AVAILABLE:
+    if rank != 0 or not RICH_AVAILABLE or not enabled:
         class _Dummy:
             def __enter__(self): return self
             def __exit__(self, *a): pass
@@ -711,6 +711,8 @@ def _safe_max(a):
 def main():
     parser = argparse.ArgumentParser(description="Nek5000 -> Ascent (MPI) Python reader")
     parser.add_argument("nek5000", help="Path to .nek5000 control file")
+    parser.add_argument("--no-progress", action="store_true",
+                        help="Disable progress bars and concise aggregated reporting")
     parser.add_argument("--steps", default=None,
                         help="Range like 'start:end:stride' (default: all)")
     args = parser.parse_args()
@@ -719,7 +721,7 @@ def main():
     rank = comm.Get_rank()
     size = comm.Get_size()
 
-    progress = make_progress(rank)
+    progress = make_progress(rank, enabled=not args.no_progress)
     with progress:
         setup_task = progress.add_task("Setup", total=6)
 
@@ -829,6 +831,7 @@ def main():
             progress.advance(per_step)  # variables done
             # Publish + render
             progress.update(per_step, description=f"Step {step} • render cycle={cycle_val}")
+            assert conn is not None
             dom = build_blueprint(coords, conn, blockDims, mesh_is_3d,
                                   fields, time_val, cycle_val, domain_id=rank)
             a.publish(dom)

@@ -17,7 +17,7 @@ if [ -z "$1" ]; then
 fi
 
 export TZ='/usr/share/zoneinfo/US/Central'
-cd ${PBS_O_WORKDIR}
+#cd ${PBS_O_WORKDIR}
 
 NEK5000_PATH="$1"
 
@@ -28,6 +28,6 @@ NTHREADS=1 # Number of software threads per rank to launch (i.e. OMP_NUM_THREADS
 
 NTOTRANKS=$(( NNODES * NRANKS ))
 
-mpiexec -n ${NTOTRANKS} --ppn ${NRANKS} --depth=${NDEPTH} --cpu-bind=depth gpu_tile_compact.sh python nek5000_ascent_reader.py "${NEK5000_PATH}" "$@"
+mpiexec -n ${NTOTRANKS} --ppn ${NRANKS} --depth=${NDEPTH} --cpu-bind=depth gpu_tile_compact.sh python nek5000_ascent_reader.py ${NEK5000_PATH} --no-progress
 
 
