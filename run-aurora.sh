@@ -28,6 +28,6 @@ NTHREADS=1 # Number of software threads per rank to launch (i.e. OMP_NUM_THREADS
 
 NTOTRANKS=$(( NNODES * NRANKS ))
 
-mpiexec -n ${NTOTRANKS} --ppn ${NRANKS} --depth=${NDEPTH} --cpu-bind=depth gpu_tile_compact.sh python nek5000_ascent_reader.py ${NEK5000_PATH} --no-progress
+mpiexec -n ${NTOTRANKS} --ppn ${NRANKS} --depth=${NDEPTH} --cpu-bind=depth gpu_tile_compact.sh python nek2ascent.py ${NEK5000_PATH} --no-progress
 
 
