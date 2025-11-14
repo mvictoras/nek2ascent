@@ -1,0 +1,159 @@
+-
+  action: "add_pipelines"
+  pipelines:
+    pl_bottom:
+      f1:
+        type: "slice"
+        params:
+          point:
+            x: 0.0
+            y: 0.0
+            z: 0.001
+          normal:
+            x: 0.0
+            y: 0.0
+            z: 1.0
+    pl_top:
+      f1:
+        type: "slice"
+        params:
+          point:
+            x: 0.0
+            y: 0.0
+            z: 0.999
+          normal:
+            x: 0.0
+            y: 0.0
+            z: 1.0
+    pl_middle:
+      f1:
+        type: "slice"
+        params:
+          point:
+            x: 0.0
+            y: 0.0
+            z: 0.5
+          normal:
+            x: 0.0
+            y: 0.0
+            z: 1.0
+-
+  action: "add_scenes"
+  scenes:
+    s1:
+      plots:
+        p1:
+          type: "pseudocolor"
+          field: "Temperature"
+          min_value: "0.0"
+          max_value: "1.2"
+          color_table:
+            name: "Rainbow Desaturated"
+      renders:
+        r1:
+          camera:
+            position: [1.6, 0.0, 1.6]
+            look_at: [0.0, 0.0, 0.5]
+            up: [0.5, 0.5, 0.0]
+            zoom: 1.00
+          image_prefix: "img/3d_temp_%06d"
+          world_annotations: false
+            #screen_annotations: false
+          image_width: 1920
+          image_height: 1080
+    s2:
+      plots:
+        p1:
+          type: "pseudocolor"
+          field: "Temperature"
+          min_value: "0.0"
+          max_value: "1.1"
+          color_table:
+            name: "Rainbow Desaturated"
+          pipeline: "pl_bottom"
+      renders:
+        r1:
+          image_prefix: "img/bottom_slice_temp_%06d"
+          world_annotations: "false"
+          image_width: 1920
+          image_height: 1080
+    s3:
+      plots:
+        p1:
+          type: "pseudocolor"
+          field: "Temperature"
+          min_value: "0.0"
+          max_value: "0.9"
+          color_table:
+            name: "Rainbow Desaturated"
+          pipeline: "pl_top"
+      renders:
+        r1:
+          world_annotations: "false"
+          image_prefix: "img/top_slice_temp_%06d"
+          image_width: 1920
+          image_height: 1080
+    s4:
+      plots:
+        p1:
+          type: "pseudocolor"
+          field: "Temperature"
+          min_value: "0.4"
+          max_value: "0.6"
+          color_table:
+            name: "Rainbow Desaturated"
+          pipeline: "pl_middle"
+      renders:
+        r1:
+          world_annotations: "false"
+          image_prefix: "img/middle_slice_temp_%06d"
+          image_width: 1920
+          image_height: 1080
+    s5:
+      plots:
+        p1:
+          type: "pseudocolor"
+          field: "Velocity Magnitude"
+          min_value: "0.0"
+          max_value: "0.5"
+          color_table:
+            name: "Rainbow Desaturated"
+          pipeline: "pl_bottom"
+      renders:
+        r1:
+          world_annotations: "false"
+          image_prefix: "img/bottom_slice_vel_%06d"
+          image_width: 1920
+          image_height: 1080
+    s6:
+      plots:
+        p1:
+          type: "pseudocolor"
+          field: "Velocity Magnitude"
+          min_value: "0.0"
+          max_value: "0.7"
+          color_table:
+            name: "Rainbow Desaturated"
+          pipeline: "pl_top"
+      renders:
+        r1:
+          world_annotations: "false"
+          image_prefix: "img/top_slice_vel_%06d"
+          image_width: 1920
+          image_height: 1080
+    s7:
+      plots:
+        p1:
+          type: "pseudocolor"
+          field: "Velocity Magnitude"
+          min_value: "0.0"
+          max_value: "0.4"
+          color_table:
+            name: "Rainbow Desaturated"
+          pipeline: "pl_middle"
+      renders:
+        r1:
+          world_annotations: "false"
+          image_prefix: "img/middle_slice_vel_%06d"
+          image_width: 1920
+          image_height: 1080

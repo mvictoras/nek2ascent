@@ -3,7 +3,7 @@
 #   ./run-aurora.sh <path/to/sim.nek5000>
 
 module reset
-module use ~/MODULEFILES
+module use /soft/modulefiles
 module load ascent
 module load python
 module load py-mpi4py
