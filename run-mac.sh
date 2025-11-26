@@ -1,4 +1,4 @@
-#!/bin/bash -l
+#!/bin/zsh
 #
 # Copyright (c) 2025 Victor Mateevitsi. All rights reserved.
 # SPDX-License-Identifier: BSD-3-Clause
@@ -29,16 +29,8 @@
 # ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 # POSSIBILITY OF SUCH DAMAGE.
 #
-# Example Aurora run wrapper (ALCF). Usage:
-#   ./run-aurora.sh <path/to/sim.nek5000>
-
-module reset
-module use /soft/modulefiles
-module load ascent
-module load python
-module load py-mpi4py
-module load py-numpy
-module load py-rich/13.7.1-5aah7mo
+# Example Mac run wrapper. Usage:
+#   ./run-mac.sh <path/to/sim.nek5000>
 
 if [ -z "$1" ]; then
 	echo "Usage: $0 <path/to/sim.nek5000>"
@@ -47,17 +39,9 @@ if [ -z "$1" ]; then
 fi
 
 export TZ='/usr/share/zoneinfo/US/Central'
-cd ${PBS_O_WORKDIR}
 
 NEK5000_PATH="$1"
 
-NNODES=`wc -l < $PBS_NODEFILE`
-NRANKS=6 # Number of MPI ranks to spawn per node
-NDEPTH=1 # Number of hardware threads per rank (i.e. spacing between MPI ranks)
-NTHREADS=1 # Number of software threads per rank to launch (i.e. OMP_NUM_THREADS)
-
-NTOTRANKS=$(( NNODES * NRANKS ))
-
-mpiexec -n ${NTOTRANKS} --ppn ${NRANKS} --depth=${NDEPTH} --cpu-bind=depth gpu_tile_compact.sh python nek2ascent.py ${NEK5000_PATH} --no-progress
+mpiexec -n 2 python nek2ascent.py ${NEK5000_PATH} --no-progress
 
 
