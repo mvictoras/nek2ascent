@@ -40,17 +40,36 @@ module load py-mpi4py
 module load py-numpy
 module load py-rich/13.7.1-5aah7mo
 
+# proxy settings
+if [[ ! "${HOSTNAME}" =~ aurora-uan ]]; then
+  export HTTP_PROXY="http://proxy.alcf.anl.gov:3128"
+  export HTTPS_PROXY="http://proxy.alcf.anl.gov:3128"
+  export http_proxy="http://proxy.alcf.anl.gov:3128"
+  export https_proxy="http://proxy.alcf.anl.gov:3128"
+  export ftp_proxy="http://proxy.alcf.anl.gov:3128"
+  export no_proxy="admin,polaris-adminvm-01,localhost,*.cm.polaris.alcf.anl.gov,polaris-*,*.polaris.alcf.anl.gov,*.alcf.anl.gov"
+fi
+
 if [ -z "$1" ]; then
 	echo "Usage: $0 <path/to/sim.nek5000>"
 	echo "Example: $0 /path/to/sim.nek5000"
 	exit 1
 fi
 
+PROGRESS=""
 export TZ='/usr/share/zoneinfo/US/Central'
-if [ -z "$PBS_ENVIRONMENT"  == "PBS_INTERACTIVE" ]; then
-	export PBS_NODEFILE=$(hostname)
+if [[ "$PBS_ENVIRONMENT"  != "PBS_INTERACTIVE" ]]; then
+	cd ${PBS_O_WORKDIR}
+	PROGRESS="--no-progress"
 fi
-cd ${PBS_O_WORKDIR}
+
+if [[ -d "venv" ]]; then
+	source venv/bin/activate
+else
+	python -m venv venv
+	source venv/bin/activate
+	pip install nek5000reader
+fi
 
 NEK5000_PATH="$1"
 
@@ -61,6 +80,6 @@ NTHREADS=1 # Number of software threads per rank to launch (i.e. OMP_NUM_THREADS
 
 NTOTRANKS=$(( NNODES * NRANKS ))
 
-mpiexec -n ${NTOTRANKS} --ppn ${NRANKS} --depth=${NDEPTH} --cpu-bind=depth gpu_tile_compact.sh python nek2ascent.py ${NEK5000_PATH} --no-progress
+mpiexec -n ${NTOTRANKS} --ppn ${NRANKS} --depth=${NDEPTH} --cpu-bind=depth gpu_tile_compact.sh python nek2ascent.py ${NEK5000_PATH} ${PROGRESS}
 
 
