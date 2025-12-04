@@ -31,6 +31,14 @@
 #
 # Example Aurora run wrapper (ALCF). Usage:
 #   ./run-aurora.sh <path/to/sim.nek5000>
+#
+#PBS -A <your_ProjectName>
+#PBS -N <your_JobName>
+#PBS -l walltime=<requested_walltime_value>
+#PBS -l filesystems=<requested_fs1:requested_fs2>
+#PBS -k doe
+#PBS -l place=scatter
+#PBS -q <requested_Queue>
 
 module reset
 module use /soft/modulefiles
@@ -51,8 +59,8 @@ if [[ ! "${HOSTNAME}" =~ aurora-uan ]]; then
 fi
 
 if [ -z "$1" ]; then
-	echo "Usage: $0 <path/to/sim.nek5000>"
-	echo "Example: $0 /path/to/sim.nek5000"
+	echo "Usage: $0 <path/to/sim.nek5000> [--scan]"
+	echo "Example: $0 /path/to/sim.nek5000 --scan"
 	exit 1
 fi
 
@@ -71,7 +79,22 @@ else
 	pip install nek5000reader
 fi
 
-NEK5000_PATH="$1"
+NEK5000_PATH=""
+SCAN_ARG=""
+
+for arg in "$@"; do
+    if [[ "$arg" == "--scan" ]]; then
+        SCAN_ARG="--scan"
+    elif [[ "$arg" == *.nek5000 ]]; then
+        NEK5000_PATH="$arg"
+    fi
+done
+
+if [ -z "$NEK5000_PATH" ]; then
+    echo "Error: No .nek5000 file specified."
+    echo "Usage: $0 <path/to/sim.nek5000> [--scan]"
+    exit 1
+fi
 
 NNODES=`wc -l < $PBS_NODEFILE`
 NRANKS=6 # Number of MPI ranks to spawn per node
@@ -80,6 +103,6 @@ NTHREADS=1 # Number of software threads per rank to launch (i.e. OMP_NUM_THREADS
 
 NTOTRANKS=$(( NNODES * NRANKS ))
 
-mpiexec -n ${NTOTRANKS} --ppn ${NRANKS} --depth=${NDEPTH} --cpu-bind=depth gpu_tile_compact.sh python nek2ascent.py ${NEK5000_PATH} ${PROGRESS}
+mpiexec -n ${NTOTRANKS} --ppn ${NRANKS} --depth=${NDEPTH} --cpu-bind=depth gpu_tile_compact.sh python nek2ascent.py ${SCAN_ARG} ${NEK5000_PATH} ${PROGRESS}
 
 

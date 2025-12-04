@@ -238,6 +238,163 @@ def _safe_max(a):
     try: return float(np.nanmax(a))
     except Exception: return None
 
+def scan_min_max(reader, step_list, comm, progress):
+    """
+    Iterates over all steps in step_list, reads fields, and computes
+    global min/max for each field across all ranks and steps.
+    Handles both scalars and 3-component vectors.
+    """
+    rank = comm.Get_rank()
+    
+    # Dictionary to hold global min/max.
+    # For scalars: {name: {'type': 'scalar', 'min': val, 'max': val}}
+    # For vectors: {name: {'type': 'vector', 'x': [min, max], 'y': [min, max], 'z': [min, max]}}
+    global_stats = {}
+    
+    # Track mesh coordinates min/max
+    mesh_stats = {
+        'x': [float('inf'), float('-inf')],
+        'y': [float('inf'), float('-inf')],
+        'z': [float('inf'), float('-inf')]
+    }
+
+    scan_task = progress.add_task("Scanning Min/Max", total=len(step_list))
+
+    for step in step_list:
+        df = reader.read_timestep(step)
+        fields = df["fields"]
+        coords = df["coordinates"]
+        
+        # Update mesh stats
+        # coords is (N, 3)
+        cx_min, cx_max = np.nanmin(coords[:,0]), np.nanmax(coords[:,0])
+        cy_min, cy_max = np.nanmin(coords[:,1]), np.nanmax(coords[:,1])
+        cz_min, cz_max = np.nanmin(coords[:,2]), np.nanmax(coords[:,2])
+        
+        if cx_min < mesh_stats['x'][0]: mesh_stats['x'][0] = float(cx_min)
+        if cx_max > mesh_stats['x'][1]: mesh_stats['x'][1] = float(cx_max)
+        if cy_min < mesh_stats['y'][0]: mesh_stats['y'][0] = float(cy_min)
+        if cy_max > mesh_stats['y'][1]: mesh_stats['y'][1] = float(cy_max)
+        if cz_min < mesh_stats['z'][0]: mesh_stats['z'][0] = float(cz_min)
+        if cz_max > mesh_stats['z'][1]: mesh_stats['z'][1] = float(cz_max)
+
+        # We need nverts to distinguish scalars from vectors
+        # We need nverts to distinguish scalars from vectors
+        # coordinates is (N, 3), so nverts = coordinates.shape[0]
+        nverts = df["coordinates"].shape[0]
+        
+        for name, arr in fields.items():
+            if arr is None: continue
+            
+            # Determine if scalar or vector
+            is_vector = (arr.size == 3 * nverts)
+            
+            if name not in global_stats:
+                if is_vector:
+                    global_stats[name] = {
+                        'type': 'vector',
+                        'x': [float('inf'), float('-inf')],
+                        'y': [float('inf'), float('-inf')],
+                        'z': [float('inf'), float('-inf')]
+                    }
+                else:
+                    global_stats[name] = {
+                        'type': 'scalar',
+                        'min': float('inf'),
+                        'max': float('-inf')
+                    }
+            
+            if is_vector:
+                # Extract components
+                # Assuming packed [x...][y...][z...]
+                vx = arr[0*nverts : 1*nverts]
+                vy = arr[1*nverts : 2*nverts]
+                vz = arr[2*nverts : 3*nverts]
+                
+                # Update X
+                lx_min, lx_max = np.nanmin(vx), np.nanmax(vx)
+                if lx_min < global_stats[name]['x'][0]: global_stats[name]['x'][0] = float(lx_min)
+                if lx_max > global_stats[name]['x'][1]: global_stats[name]['x'][1] = float(lx_max)
+                
+                # Update Y
+                ly_min, ly_max = np.nanmin(vy), np.nanmax(vy)
+                if ly_min < global_stats[name]['y'][0]: global_stats[name]['y'][0] = float(ly_min)
+                if ly_max > global_stats[name]['y'][1]: global_stats[name]['y'][1] = float(ly_max)
+                
+                # Update Z
+                lz_min, lz_max = np.nanmin(vz), np.nanmax(vz)
+                if lz_min < global_stats[name]['z'][0]: global_stats[name]['z'][0] = float(lz_min)
+                if lz_max > global_stats[name]['z'][1]: global_stats[name]['z'][1] = float(lz_max)
+
+            else:
+                # Scalar
+                local_min = np.nanmin(arr)
+                local_max = np.nanmax(arr)
+                
+                if local_min < global_stats[name]['min']:
+                    global_stats[name]['min'] = float(local_min)
+                if local_max > global_stats[name]['max']:
+                    global_stats[name]['max'] = float(local_max)
+        
+        progress.advance(scan_task)
+
+    # Now reduce across all ranks
+    # We'll reconstruct a clean dictionary for the final results
+    final_stats = {}
+    
+    # Helper to reduce a min/max pair
+    def reduce_pair(lmin, lmax):
+        gmin = comm.allreduce(lmin, op=MPI.MIN)
+        gmax = comm.allreduce(lmax, op=MPI.MAX)
+        return gmin, gmax
+
+    for name, data in global_stats.items():
+        if data['type'] == 'scalar':
+            gmin, gmax = reduce_pair(data['min'], data['max'])
+            final_stats[name] = {'type': 'scalar', 'min': gmin, 'max': gmax}
+        else:
+            gx_min, gx_max = reduce_pair(data['x'][0], data['x'][1])
+            gy_min, gy_max = reduce_pair(data['y'][0], data['y'][1])
+            gz_min, gz_max = reduce_pair(data['z'][0], data['z'][1])
+            final_stats[name] = {
+                'type': 'vector',
+                'x': (gx_min, gx_max),
+                'y': (gy_min, gy_max),
+                'z': (gz_min, gz_max)
+            }
+            
+    # Reduce mesh stats
+    final_mesh_stats = {}
+    gx_min, gx_max = reduce_pair(mesh_stats['x'][0], mesh_stats['x'][1])
+    gy_min, gy_max = reduce_pair(mesh_stats['y'][0], mesh_stats['y'][1])
+    gz_min, gz_max = reduce_pair(mesh_stats['z'][0], mesh_stats['z'][1])
+    final_mesh_stats = {
+        'x': (gx_min, gx_max),
+        'y': (gy_min, gy_max),
+        'z': (gz_min, gz_max)
+    }
+
+    if rank == 0:
+        print("\n" + "="*60)
+        print("SCAN RESULTS (Global Min/Max)")
+        print("="*60)
+        
+        print(f"{'Mesh Coordinates':<20}")
+        print(f"  {'x':<18} : min={final_mesh_stats['x'][0]:.6f}, max={final_mesh_stats['x'][1]:.6f}")
+        print(f"  {'y':<18} : min={final_mesh_stats['y'][0]:.6f}, max={final_mesh_stats['y'][1]:.6f}")
+        print(f"  {'z':<18} : min={final_mesh_stats['z'][0]:.6f}, max={final_mesh_stats['z'][1]:.6f}")
+        print("-" * 60)
+
+        for name, info in final_stats.items():
+            if info['type'] == 'scalar':
+                print(f"{name:<20} : min={info['min']:.6f}, max={info['max']:.6f}")
+            else:
+                print(f"{name:<20} : (Vector)")
+                print(f"  {'x':<18} : min={info['x'][0]:.6f}, max={info['x'][1]:.6f}")
+                print(f"  {'y':<18} : min={info['y'][0]:.6f}, max={info['y'][1]:.6f}")
+                print(f"  {'z':<18} : min={info['z'][0]:.6f}, max={info['z'][1]:.6f}")
+        print("="*60 + "\n")
+
 
 # ---------------------------
 # Main pipeline
@@ -250,6 +407,8 @@ def main():
                         help="Disable progress bars and concise aggregated reporting")
     parser.add_argument("--steps", default=None,
                         help="Range like 'start:end:stride' (default: all)")
+    parser.add_argument("--scan", action="store_true",
+                        help="Scan all steps for min/max variable values (skips rendering)")
     args = parser.parse_args()
 
     comm = MPI.COMM_WORLD
@@ -262,14 +421,16 @@ def main():
         reader = Nek5000Reader(args.nek5000, comm=comm)
         progress.advance(read_task) 
 
-        setup_task = progress.add_task("Setup Ascent", total=1)
-        progress.update(setup_task, description="Setup • open Ascent")
-        a = ascent.mpi.Ascent()
-        opts = conduit.Node()
-        opts["mpi_comm"] = MPI.COMM_WORLD.py2f()
-        opts["exceptions"] = "forward"
-        a.open(opts)
-        progress.advance(setup_task)
+        # If scanning, skip Ascent setup
+        if not args.scan:
+            setup_task = progress.add_task("Setup Ascent", total=1)
+            progress.update(setup_task, description="Setup • open Ascent")
+            a = ascent.mpi.Ascent()
+            opts = conduit.Node()
+            opts["mpi_comm"] = MPI.COMM_WORLD.py2f()
+            opts["exceptions"] = "forward"
+            a.open(opts)
+            progress.advance(setup_task)
 
         # build step list
         if args.steps:
@@ -281,6 +442,10 @@ def main():
         # cache geometry
         coords_cached = None
         conn_cached = None
+
+        if args.scan:
+            scan_min_max(reader, step_list, comm, progress)
+            return
 
         steps_task = progress.add_task(f"Timesteps (total={len(step_list)})", total=len(step_list))
 
@@ -310,7 +475,8 @@ def main():
 
             progress.advance(steps_task)
 
-    a.close()
+    if not args.scan:
+        a.close()
 
 if __name__ == "__main__":
     main()

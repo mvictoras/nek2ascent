@@ -67,6 +67,7 @@ This script:
 |-----------|-------------|
 | **`nek5000`** *(positional)* | Path to the `.nek5000` control file. Must include a `filetemplate:` entry pointing to the per-step `.fld` files (e.g., `data%05d.fld`). |
 | **`--steps`** | Range of steps to process. Format: `start[:end[:stride]]`. <br>Examples: <br>• `100` → process only step 100 <br>• `100:110` → steps 100–109 <br>• `100:200:2` → steps 100, 102, …, 198 |
+| **`--scan`** | Scans the specified steps to calculate and print the global minimum and maximum values for all variables. Skips rendering. |
 | **`--no-progress`** | Disables interactive progress bars and rank-0 aggregated printing for clean batch output. |
 
 
