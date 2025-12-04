@@ -47,6 +47,9 @@ if [ -z "$1" ]; then
 fi
 
 export TZ='/usr/share/zoneinfo/US/Central'
+if [ -z "$PBS_ENVIRONMENT"  == "PBS_INTERACTIVE" ]; then
+	export PBS_NODEFILE=$(hostname)
+fi
 cd ${PBS_O_WORKDIR}
 
 NEK5000_PATH="$1"
