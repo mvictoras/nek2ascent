@@ -38,11 +38,19 @@ import struct
 import argparse
 from typing import Tuple, Dict, List, Optional
 
+# NOTE: conduit/ascent must be imported before mpi4py.MPI (and before
+# nek5000reader, which pulls in mpi4py). The ascent module's environment can
+# bind libmpifort.so.12 to Intel oneAPI's copy (which lacks MPICH's
+# MPII_F_TRUE) depending on load order; conduit then fails with
+# "undefined symbol: MPII_F_TRUE". run-aurora.sh sets an LD_PRELOAD of
+# MPICH's libmpi/libmpifort that makes this order-independent; importing
+# conduit first is belt-and-suspenders.
+import conduit
+import ascent.mpi  # Ascent must be built with MPI; we pass the comm at open().
+
 import numpy as np
 from mpi4py import MPI
 
-import conduit
-import ascent.mpi  # Ascent must be built with MPI; we pass the comm at open().
 from nek5000reader import Nek5000Reader
 import sys
 
@@ -130,7 +138,7 @@ def build_blueprint(coords_xyz: np.ndarray,
     # topology
     n["topologies/mesh/type"] = "unstructured"
     n["topologies/mesh/coordset"] = "coords"
-    n["topologies/mesh/elements/shape"] = "hex" if mesh_is_3d else "quads"
+    n["topologies/mesh/elements/shape"] = "hex" if mesh_is_3d else "quad"
     n["topologies/mesh/elements/connectivity"].set_external(conn)
 
     # fields
@@ -467,8 +475,6 @@ def main():
             assert conn is not None
             dom = build_blueprint(coords, conn, df["metadata"]["block_dims"], df["metadata"]["mesh_is_3d"],
                                   fields, df["time"], df["cycle"], domain_id=rank)
-            import time
-            time.sleep(100)
             a.publish(dom)
             a.execute(conduit.Node())  # or your default_actions(...)
             progress.advance(per_step)  # render done

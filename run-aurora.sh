@@ -44,9 +44,34 @@ module reset
 module use /soft/modulefiles
 module load ascent
 module load python
+module load py-pip
 module load py-mpi4py
 module load py-numpy
-module load py-rich/13.7.1-5aah7mo
+module load py-rich/14.1.0
+
+# Work around MPI library clashes on Aurora. Two system issues combine here:
+#   1. The ascent module ships a misbuilt zlib (/soft/visualization/.../zlib-
+#      1.3.1/lib/libz.so.1) whose DT_NEEDED includes libmpi.so.12. Anything
+#      that imports Python's zlib module (pytest, gzip, ...) loads it, and it
+#      drags in libmpi from whichever MPI dir comes first in LD_LIBRARY_PATH
+#      (Intel oneAPI precedes the spack MPICH dir).
+#   2. conduit (from the ascent module) needs MPICH's libmpifort.so.12
+#      (symbol MPII_F_TRUE); binding it to Intel's copy is fatal.
+# Preloading MPICH's libmpi and libmpifort pins the sonames to MPICH for the
+# whole process, independent of import order. The path is resolved from the
+# mpi4py install itself so this survives spack/CPE version bumps.
+MPI4PY_EXT=$(python -c "import mpi4py, glob, os; print(glob.glob(os.path.join(os.path.dirname(mpi4py.__file__), 'MPI*.so'))[0])" 2>/dev/null)
+MPICH_LIB=$(ldd "${MPI4PY_EXT}" 2>/dev/null | awk '/libmpi\.so/{print $3}' | head -1)
+if [[ -n "${MPICH_LIB}" ]]; then
+	MPICH_LIB=$(dirname "${MPICH_LIB}")
+	_PRELOAD=""
+	for _lib in libmpi.so.12 libmpifort.so.12; do
+		[[ -f "${MPICH_LIB}/${_lib}" ]] && _PRELOAD="${MPICH_LIB}/${_lib}${_PRELOAD:+:${_PRELOAD}}"
+	done
+	if [[ -n "${_PRELOAD}" ]]; then
+		export LD_PRELOAD="${_PRELOAD}${LD_PRELOAD:+:${LD_PRELOAD}}"
+	fi
+fi
 
 # proxy settings
 if [[ ! "${HOSTNAME}" =~ aurora-uan ]]; then
@@ -67,16 +92,20 @@ fi
 PROGRESS=""
 export TZ='/usr/share/zoneinfo/US/Central'
 if [[ "$PBS_ENVIRONMENT"  != "PBS_INTERACTIVE" ]]; then
-	cd ${PBS_O_WORKDIR}
+	# Fall back to the current directory when run directly on a compute node
+	# (i.e. outside of a PBS job).
+	if [[ -n "${PBS_O_WORKDIR}" ]]; then
+		cd ${PBS_O_WORKDIR}
+	fi
 	PROGRESS="--no-progress"
 fi
 
-if [[ -d "venv" ]]; then
-	source venv/bin/activate
-else
-	python -m venv venv
-	source venv/bin/activate
-	pip install nek5000reader
+# nek5000reader is a pure-Python package from PyPI; install it into the
+# user's ~/.local so each user gets their own copy (no shared venv, no
+# writes to the read-only module tree). The conduit/ascent bindings come
+# from the system modules above and must not be shadowed by a venv.
+if ! python -c "import nek5000reader" >/dev/null 2>&1; then
+	python -m pip install --user nek5000reader
 fi
 
 NEK5000_PATH=""
@@ -96,7 +125,12 @@ if [ -z "$NEK5000_PATH" ]; then
     exit 1
 fi
 
-NNODES=`wc -l < $PBS_NODEFILE`
+if [[ -n "${PBS_NODEFILE}" ]]; then
+	NNODES=$(wc -l < "${PBS_NODEFILE}")
+else
+	# Not running under PBS (e.g. interactive run on a compute node).
+	NNODES=1
+fi
 NRANKS=6 # Number of MPI ranks to spawn per node
 NDEPTH=1 # Number of hardware threads per rank (i.e. spacing between MPI ranks)
 NTHREADS=1 # Number of software threads per rank to launch (i.e. OMP_NUM_THREADS)
